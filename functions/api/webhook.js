@@ -1,132 +1,120 @@
 /**
- * @file Telegram Bot Supreme Version (Cloudflare Compatibility Fix)
+ * @file Telegram Bot Supreme (Native Engine Version)
  * @author Xiaosu (https://t.me/xiaosu06)
- * @copyright 2026 Xiaosu. All rights reserved.
  */
-
-// --- 核心黑科技：解决所有 16 个 Build 错误 ---
-import 'node:crypto';
-import 'node:https';
-import 'node:stream';
-import 'node:fs';
-import 'node:path';
-import 'node:url';
-import 'node:util';
-import 'node:events';
-import 'node:buffer';
-import 'node:http';
-
-import { Telegraf, Markup } from 'telegraf';
 
 export async function onRequestPost(context) {
     const { env } = context;
     const kv = env.MY_KV;
-    const bot = new Telegraf(env.BOT_TOKEN);
-    const ADMIN_ID = parseInt(env.ADMIN_ID);
+    const BOT_TOKEN = env.BOT_TOKEN;
+    const ADMIN_ID = env.ADMIN_ID;
 
-    // 1. 初始化数据库
-    const getDb = async () => (await kv.get('config', { type: 'json' })) || { 
-        users: [], banned: {}, whitelist: [], appeal: {},
-        ai: { urls: [], keys: [], models: [] }, stats: { totalMsg: 0, start: Date.now() } 
+    // --- 核心工具函数 ---
+    const tg = async (method, body) => {
+        return fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
     };
-    const saveDb = async (d) => await kv.put('config', JSON.stringify(d));
 
-    const body = await context.request.json();
+    const getDb = async () => (await kv.get('config', { type: 'json' })) || { 
+        users: [], banned: {}, ai: { urls: [], keys: [], models: [] } 
+    };
 
-    // --- 管理员权限拦截 ---
-    bot.on('message', async (ctx, next) => {
-        const uid = ctx.from.id;
-        if (uid !== ADMIN_ID) return next();
-        const text = ctx.message.text || "";
-        let db = await getDb();
+    const payload = await context.request.json();
+    const msg = payload.message;
+    if (!msg) return new Response("OK");
 
-        // AI 映射配置: /setai url1,url2 key1,key2 m1,m2
+    const uid = msg.from.id.toString();
+    const text = msg.text || "";
+
+    // --- 1. 管理员逻辑 ---
+    if (uid === ADMIN_ID) {
+        // AI 映射配置
         if (text.startsWith('/setai ')) {
             const parts = text.split(' ');
-            if (parts.length < 4) return ctx.reply("❌ 请按格式输入：/setai url,url key,key m,m");
+            let db = await getDb();
             db.ai = { urls: parts[1].split(','), keys: parts[2].split(','), models: parts[3].split(',') };
-            await saveDb(db);
-            return ctx.reply('✅ AI 映射映射配置成功！By Xiaosu');
+            await kv.put('config', JSON.stringify(db));
+            await tg('sendMessage', { chat_id: ADMIN_ID, text: "✅ AI 映射映射配置成功！By Xiaosu" });
+            return new Response("OK");
         }
 
-        // 解封 /unban id
-        if (text.startsWith('/unban ')) {
-            const tid = text.split(' ')[1];
-            delete db.banned[tid]; await saveDb(db);
-            return ctx.replyWithHTML(`✅ 已解封用户 <code>${tid}</code>`);
+        // 退出锁定模式指令
+        if (text === '/exit') {
+            await kv.delete('admin_target');
+            await tg('sendMessage', { chat_id: ADMIN_ID, text: "📴 已退出锁定回复模式。" });
+            return new Response("OK");
         }
 
-        // 状态回复锁定
-        const activeTarget = await kv.get('admin_target');
-        if (activeTarget && !text.startsWith('/')) {
-            try {
-                await bot.telegram.copyMessage(activeTarget, ctx.chat.id, ctx.message.message_id, 
-                    Markup.inlineKeyboard([[Markup.button.callback('🛑 结束对话', `exit:${activeTarget}`)]])
-                );
-                return ctx.replyWithHTML(`📤 已发送至 <code>${activeTarget}</code>`, 
-                    Markup.inlineKeyboard([[Markup.button.callback('⏹️ 停止对话状态', 'clear_target')]])
-                );
-            } catch (e) { return ctx.reply("❌ 发送失败。"); }
+        // 状态锁定回复逻辑
+        const target = await kv.get('admin_target');
+        if (target && !text.startsWith('/')) {
+            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/copyMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: target,
+                    from_chat_id: ADMIN_ID,
+                    message_id: msg.message_id,
+                    reply_markup: { inline_keyboard: [[{ text: "🛑 结束对话", callback_data: `exit:${target}` }]] }
+                })
+            });
+            await tg('sendMessage', { chat_id: ADMIN_ID, text: `📤 已发送至 <code>${target}</code>`, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "⏹️ 停止对话状态", callback_data: "clear_admin" }]] } });
+            return new Response("OK");
         }
 
-        // 引用回复
-        if (ctx.message.reply_to_message) {
-            const tid = (ctx.message.reply_to_message.text || ctx.message.reply_to_message.caption)?.match(/ID: (\d+)/)?.[1];
+        // 引用回复逻辑
+        if (msg.reply_to_message) {
+            const rText = msg.reply_to_message.text || msg.reply_to_message.caption || "";
+            const tid = rText.match(/ID: (\d+)/)?.[1];
             if (tid) {
-                await bot.telegram.copyMessage(tid, ctx.chat.id, ctx.message.message_id);
-                return ctx.reply(`✔️ 引用回复已同步。`);
+                await tg('copyMessage', { chat_id: tid, from_chat_id: ADMIN_ID, message_id: msg.message_id });
+                await tg('sendMessage', { chat_id: ADMIN_ID, text: `✔️ 已通过[引用格式]回复给 ${tid}` });
+                return new Response("OK");
             }
         }
-        return next();
-    });
+    }
 
-    // --- 用户逻辑 ---
-    bot.on(['message', 'photo', 'video', 'voice', 'audio', 'document', 'sticker'], async (ctx) => {
-        const uid = ctx.from.id.toString();
-        const db = await getDb();
-        if (uid == ADMIN_ID) return;
+    // --- 2. 用户逻辑 ---
+    if (uid !== ADMIN_ID) {
+        // 全格式转发给管理员 (包含 ID 锚点供回复使用)
+        const header = `📩 <b>来自:</b> <code>${msg.from.first_name}</code>\n<b>ID:</b> <code>${uid}</code>`;
+        await tg('sendMessage', { 
+            chat_id: ADMIN_ID, 
+            text: header, 
+            parse_mode: 'HTML',
+            reply_markup: { 
+                inline_keyboard: [
+                    [{ text: "💬 回复此人", callback_data: `sel:${uid}` }, { text: "🚫 封禁", callback_data: `ban:${uid}` }],
+                    [{ text: "👤 个人主页", url: `tg://user?id=${uid}` }]
+                ]
+            } 
+        });
+        await tg('copyMessage', { chat_id: ADMIN_ID, from_chat_id: uid, message_id: msg.message_id });
+        await tg('sendMessage', { chat_id: uid, text: "✔️ 消息已送达人工后台，请等待回复。" });
+    }
 
-        // 封禁与申诉
-        if (db.banned[uid]) {
-            return ctx.reply(`🚫 您已被封禁！`, Markup.inlineKeyboard([[Markup.button.callback('⚖️ 申诉', `appeal:${uid}`)]]));
-        }
-
-        const state = await kv.get(`state:${uid}`) || 'none';
-
-        // 人工模式转发
-        if (state === 'human') {
-            const header = `📩 <b>来自:</b> <code>${ctx.from.first_name}</code>\n<b>ID:</b> <code>${uid}</code>`;
-            const kb = Markup.inlineKeyboard([
-                [Markup.button.callback('💬 回复此人', `select:${uid}`), Markup.button.callback('🚫 封禁', `ban:${uid}`)],
-                [Markup.button.url('👤 主页', `tg://user?id=${uid}`)]
-            ]);
-            await bot.telegram.sendMessage(ADMIN_ID, header, { parse_mode: 'HTML', ...kb });
-            await bot.telegram.copyMessage(ADMIN_ID, ctx.chat.id, ctx.message.message_id);
-            return ctx.reply("✔️ 消息已同步，请等待。 By Xiaosu");
-        }
-    });
-
-    // --- 按钮回调 ---
-    bot.on('callback_query', async (ctx) => {
-        const data = ctx.callbackQuery.data;
-        if (data.startsWith('select:')) {
+    // --- 3. 按钮回调处理 (Callback Query) ---
+    const cb = payload.callback_query;
+    if (cb) {
+        const data = cb.data;
+        if (data.startsWith('sel:')) {
             const tid = data.split(':')[1];
             await kv.put('admin_target', tid);
-            return ctx.replyWithHTML(`✅ 已锁定 <code>${tid}</code>，现在发送的任何内容都将直达。`);
+            await tg('sendMessage', { chat_id: ADMIN_ID, text: `✅ 锁定模式：<code>${tid}</code>，现在发送内容将直接传达。`, parse_mode: "HTML" });
         }
-        if (data === 'clear_target') {
+        if (data === 'clear_admin') {
             await kv.delete('admin_target');
-            return ctx.reply("📴 对话状态已清除。");
+            await tg('sendMessage', { chat_id: ADMIN_ID, text: "📴 锁定状态已解除。" });
         }
-    });
+        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ callback_query_id: cb.id })
+        });
+    }
 
-    bot.start(async (ctx) => {
-        await kv.put(`state:${ctx.from.id}`, 'human');
-        return ctx.reply("✅ 欢迎！已接通人工。 By Xiaosu");
-    });
-
-    try {
-        await bot.handleUpdate(body);
-    } catch (e) { console.error(e); }
-    return new Response('OK');
+    return new Response("OK");
 }
