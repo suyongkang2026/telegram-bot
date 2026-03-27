@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Xiaosu Bot Admin</title>
+  <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/ant-design-vue@4.0.7/dist/antd.min.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <style>
+    body { background: #f0f2f5; margin: 0; }
+    .footer { text-align: center; padding: 20px; background: #fff; border-top: 1px solid #e8e8e8; position: fixed; bottom: 0; width: 100%; }
+    .tg-btn { background: #0088cc; color: white !important; padding: 5px 15px; border-radius: 20px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <a-layout style="min-height: 100vh">
+      <a-layout-header style="color: white; font-weight: bold; font-size: 18px">🚀 Xiaosu Bot Admin</a-layout-header>
+      
+      <a-layout-content style="padding: 50px">
+        <a-card v-if="!isLoggedIn" title="身份验证" style="max-width: 400px; margin: auto">
+          <a-input-password v-model:value="token" placeholder="请输入您的 JWT 令牌" />
+          <a-button type="primary" block @click="login" style="margin-top: 20px">验证进入</a-button>
+        </a-card>
+
+        <div v-else>
+          <a-alert message="登录成功，欢迎使用管理系统" type="success" show-icon />
+          <a-card title="系统统计" style="margin-top: 20px">
+             <p>数据加载中...</p>
+          </a-card>
+        </div>
+      </a-layout-content>
+
+      <div class="footer">
+        <span>Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</span>
+        <a href="https://t.me/xiaosu06" target="_blank" class="tg-btn">联系作者</a>
+      </div>
+    </a-layout>
+  </div>
+
+  <script>
+    const { createApp, ref } = Vue;
+    createApp({
+      setup() {
+        const token = ref(localStorage.getItem('token') || '');
+        const isLoggedIn = ref(!!token.value);
+        const login = () => {
+          localStorage.setItem('token', token.value);
+          location.reload();
+        };
+        return { token, isLoggedIn, login };
+      }
+    }).use(antd).mount('#app');
+  </script>
+</body>
+</html>
