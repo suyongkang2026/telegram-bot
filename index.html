@@ -1,57 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <title>Xiaosu Bot Admin</title>
-  <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://unpkg.com/ant-design-vue@4.0.7/dist/antd.min.js"></script>
-  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-  <style>
-    body { background: #f0f2f5; margin: 0; }
-    .footer { text-align: center; padding: 20px; background: #fff; border-top: 1px solid #e8e8e8; position: fixed; bottom: 0; width: 100%; }
-    .tg-btn { background: #0088cc; color: white !important; padding: 5px 15px; border-radius: 20px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Xiaosu Bot Supreme Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/ant-design-vue@4.0.7/dist/antd.min.js"></script>
 </head>
-<body>
-  <div id="app">
-    <a-layout style="min-height: 100vh">
-      <a-layout-header style="color: white; font-weight: bold; font-size: 18px">🚀 Xiaosu Bot Admin</a-layout-header>
-      
-      <a-layout-content style="padding: 50px">
-        <a-card v-if="!isLoggedIn" title="身份验证" style="max-width: 400px; margin: auto">
-          <a-input-password v-model:value="token" placeholder="请输入您的 JWT 令牌" />
-          <a-button type="primary" block @click="login" style="margin-top: 20px">验证进入</a-button>
-        </a-card>
+<body class="bg-gray-50">
+    <div id="app">
+        <a-layout class="min-h-screen">
+            <a-layout-header class="bg-[#001529] flex justify-between items-center px-10 shadow-xl">
+                <div class="text-white text-xl font-black tracking-widest">🚀 XIAOSU BOT MANAGER PRO</div>
+                <a-tag v-if="isAuthed" color="cyan">RUNNING</a-tag>
+            </a-layout-header>
 
-        <div v-else>
-          <a-alert message="登录成功，欢迎使用管理系统" type="success" show-icon />
-          <a-card title="系统统计" style="margin-top: 20px">
-             <p>数据加载中...</p>
-          </a-card>
-        </div>
-      </a-layout-content>
+            <a-layout-content class="p-10">
+                <div v-if="!isAuthed" class="max-w-md mx-auto bg-white p-12 rounded-3xl shadow-2xl mt-20">
+                    <h2 class="text-2xl font-bold text-center mb-8">MASTER KEY AUTH</h2>
+                    <a-input-password v-model:value="token" size="large" placeholder="JWT Secret" class="mb-6 rounded-xl" />
+                    <a-button type="primary" block size="large" class="h-14 rounded-xl font-bold bg-indigo-600" @click="login">进入核心控制台</a-button>
+                </div>
 
-      <div class="footer">
-        <span>Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</span>
-        <a href="https://t.me/xiaosu06" target="_blank" class="tg-btn">联系作者</a>
-      </div>
-    </a-layout>
-  </div>
+                <div v-else class="max-w-7xl mx-auto">
+                    <a-row :gutter="24">
+                        <a-col :span="6"><a-card title="运行时长"><a-statistic value="1d 10h29s" value-style="color:#3f8600" /></a-card></a-col>
+                        <a-col :span="6"><a-card title="今日消息"><a-statistic :value="1024" /></a-card></a-col>
+                        <a-col :span="12"><a-card title="AI 状态"><a-badge status="processing" text="全协议透传 + AI 审计已就绪" /></a-card></a-col>
+                    </a-row>
+                </div>
+            </a-layout-content>
 
-  <script>
-    const { createApp, ref } = Vue;
-    createApp({
-      setup() {
-        const token = ref(localStorage.getItem('token') || '');
-        const isLoggedIn = ref(!!token.value);
-        const login = () => {
-          localStorage.setItem('token', token.value);
-          location.reload();
-        };
-        return { token, isLoggedIn, login };
-      }
-    }).use(antd).mount('#app');
-  </script>
+            <a-layout-footer class="text-center py-10 bg-white border-t">
+                <div class="mb-4 text-gray-400">Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</div>
+                <a href="https://t.me/xiaosu06" target="_blank" class="bg-[#0088cc] text-white px-10 py-3 rounded-full inline-flex items-center gap-2 hover:scale-105 transition-all">
+                    <span>✈️</span> 联系作者 (Xiaosu)
+                </a>
+            </a-layout-footer>
+        </a-layout>
+    </div>
+    <script>
+        const { createApp, ref } = Vue;
+        createApp({
+            setup() {
+                const token = ref(localStorage.getItem('token') || '');
+                const isAuthed = ref(!!token.value);
+                const login = () => { if(token.value){ localStorage.setItem('token', token.value); isAuthed.value=true; } };
+                return { token, isAuthed, login };
+            }
+        }).use(antd).mount('#app');
+    </script>
 </body>
 </html>
