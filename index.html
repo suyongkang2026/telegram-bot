@@ -1,40 +1,41 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
     <meta charset="UTF-8">
-    <title>Xiaosu Bot Supreme Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
+    <title>Xiaosu Bot Pro Admin</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://unpkg.com/ant-design-vue@4.0.7/dist/antd.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50">
     <div id="app">
         <a-layout class="min-h-screen">
-            <a-layout-header class="bg-[#001529] flex justify-between items-center px-10 shadow-xl">
-                <div class="text-white text-xl font-black tracking-widest">🚀 XIAOSU BOT MANAGER PRO</div>
-                <a-tag v-if="isAuthed" color="cyan">RUNNING</a-tag>
+            <a-layout-header class="bg-slate-900 flex justify-between items-center px-10 shadow-2xl">
+                <div class="text-white text-xl font-black italic">🚀 XIAOSU BOT SUPREME</div>
+                <a-tag color="cyan" v-if="authed">AUTHED</a-tag>
             </a-layout-header>
 
-            <a-layout-content class="p-10">
-                <div v-if="!isAuthed" class="max-w-md mx-auto bg-white p-12 rounded-3xl shadow-2xl mt-20">
-                    <h2 class="text-2xl font-bold text-center mb-8">MASTER KEY AUTH</h2>
-                    <a-input-password v-model:value="token" size="large" placeholder="JWT Secret" class="mb-6 rounded-xl" />
-                    <a-button type="primary" block size="large" class="h-14 rounded-xl font-bold bg-indigo-600" @click="login">进入核心控制台</a-button>
+            <a-layout-content class="p-10 flex justify-center">
+                <div v-if="!authed" class="w-full max-w-md bg-white p-12 rounded-3xl shadow-xl mt-20">
+                    <h2 class="text-2xl font-bold text-center mb-8">JWT MASTER ACCESS</h2>
+                    <a-input-password v-model:value="token" size="large" class="mb-6 rounded-xl" placeholder="Master Secret" />
+                    <a-button type="primary" block size="large" class="h-14 rounded-xl font-bold bg-indigo-600" @click="login">进入控制中心</a-button>
                 </div>
 
-                <div v-else class="max-w-7xl mx-auto">
-                    <a-row :gutter="24">
-                        <a-col :span="6"><a-card title="运行时长"><a-statistic value="1d 10h29s" value-style="color:#3f8600" /></a-card></a-col>
-                        <a-col :span="6"><a-card title="今日消息"><a-statistic :value="1024" /></a-card></a-col>
-                        <a-col :span="12"><a-card title="AI 状态"><a-badge status="processing" text="全协议透传 + AI 审计已就绪" /></a-card></a-col>
+                <div v-else class="w-full max-w-7xl">
+                    <a-row :gutter="24" class="mb-8">
+                        <a-col :span="6"><a-card hoverable class="rounded-2xl border-none"><a-statistic title="运行时长" value="1d 10h29s" /></a-card></a-col>
+                        <a-col :span="6"><a-card hoverable class="rounded-2xl border-none"><a-statistic title="今日消息" :value="1024" /></a-card></a-col>
+                        <a-col :span="12"><a-card class="rounded-2xl border-none"><a-badge status="processing" text="AI 审计全协议透传监控中" /></a-card></a-col>
                     </a-row>
+                    <a-table :columns="[]" :dataSource="[]" title="黑名单审计列表" />
                 </div>
             </a-layout-content>
 
-            <a-layout-footer class="text-center py-10 bg-white border-t">
-                <div class="mb-4 text-gray-400">Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</div>
-                <a href="https://t.me/xiaosu06" target="_blank" class="bg-[#0088cc] text-white px-10 py-3 rounded-full inline-flex items-center gap-2 hover:scale-105 transition-all">
+            <a-layout-footer class="text-center py-12 bg-white border-t">
+                <div class="mb-4 text-gray-400 font-light">Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</div>
+                <a href="https://t.me/xiaosu06" target="_blank" class="bg-[#0088cc] hover:bg-[#0077b3] text-white px-10 py-3 rounded-full transition-all inline-flex items-center gap-2">
                     <span>✈️</span> 联系作者 (Xiaosu)
                 </a>
             </a-layout-footer>
@@ -45,9 +46,9 @@
         createApp({
             setup() {
                 const token = ref(localStorage.getItem('token') || '');
-                const isAuthed = ref(!!token.value);
-                const login = () => { if(token.value){ localStorage.setItem('token', token.value); isAuthed.value=true; } };
-                return { token, isAuthed, login };
+                const authed = ref(!!token.value);
+                const login = () => { if(token.value){ localStorage.setItem('token', token.value); authed.value=true; } };
+                return { token, authed, login };
             }
         }).use(antd).mount('#app');
     </script>
