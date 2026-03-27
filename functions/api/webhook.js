@@ -1,8 +1,3 @@
-/**
- * @file Telegram Bot Supreme Backend
- * @author Xiaosu (https://t.me/xiaosu06)
- * @copyright 2026 Xiaosu. All rights reserved.
- */
 import { Telegraf, Markup } from 'telegraf';
 
 export async function onRequestPost(context) {
@@ -11,117 +6,125 @@ export async function onRequestPost(context) {
     const bot = new Telegraf(env.BOT_TOKEN);
     const ADMIN_ID = parseInt(env.ADMIN_ID);
 
-    // --- 数据库助手 ---
     const getDb = async () => (await kv.get('config', { type: 'json' })) || { 
-        users: [], banned: {}, whitelist: [], ai: { urls: [], keys: [], models: [] }, stats: { total: 0, start: Date.now() } 
+        users: [], banned: {}, appeal: {}, ai: { urls: [], keys: [], models: [] }, stats: { totalMsg: 0, start: Date.now() } 
     };
     const saveDb = async (d) => await kv.put('config', JSON.stringify(d));
 
-    // --- 代理支持 (选填) ---
-    // 如果 env.PROXY_URL 存在，则通过代理请求 API
-    const fetchOptions = env.PROXY_URL ? { agent: new HttpsProxyAgent(env.PROXY_URL) } : {};
-
     const body = await context.request.json();
 
-    // 1. 管理员指令系统
-    bot.on('text', async (ctx, next) => {
-        if (ctx.from.id !== ADMIN_ID) return next();
-        const text = ctx.message.text;
-        let db = await getDb();
-
-        // 对应逻辑配置：/setai url1,url2 key1,key2 m1,m2
-        if (text.startsWith('/setai ')) {
-            const [_, urls, keys, models] = text.split(' ');
-            db.ai = { urls: urls.split(','), keys: keys.split(','), models: models.split(',') };
-            await saveDb(db);
-            return ctx.reply('✅ AI 映射映射配置成功！ By Xiaosu');
-        }
-
-        // 解封
-        if (text.startsWith('/unban ')) {
-            const tid = text.split(' ')[1];
-            delete db.banned[tid]; await saveDb(db);
-            return ctx.reply(`✅ 已解封用户 <code>${tid}</code>`, { parse_mode: 'HTML' });
-        }
-
-        return next();
-    });
-
-    // 2. 管理员回复逻辑 (状态锁定 + 引用回复)
+    // 1. 管理员逻辑拦截
     bot.on('message', async (ctx, next) => {
-        if (ctx.from.id !== ADMIN_ID) return next();
-        
-        // 引用回复
-        if (ctx.message.reply_to_message) {
-            const rText = ctx.message.reply_to_message.text || ctx.message.reply_to_message.caption || "";
-            const tid = rText.match(/ID: (\d+)/)?.[1];
-            if (tid) {
-                await bot.telegram.copyMessage(tid, ctx.chat.id, ctx.message.message_id);
-                return ctx.reply(`📤 已引用回复给 ${tid} (格式已透传)`);
+        const uid = ctx.from.id;
+        const text = ctx.message.text || "";
+        const db = await getDb();
+
+        if (uid === ADMIN_ID) {
+            // AI 映射: /setai url1,url2 key1,key2 m1,m2
+            if (text.startsWith('/setai ')) {
+                const [_, u, k, m] = text.split(' ');
+                db.ai = { urls: u.split(','), keys: k.split(','), models: m.split(',') };
+                await saveDb(db);
+                return ctx.reply('✅ AI 映射成功！By Xiaosu');
+            }
+
+            // 广播: /post 内容
+            if (text.startsWith('/post ')) {
+                const msg = text.replace('/post ', '');
+                let s = 0, f = 0;
+                for (const uId of db.users) {
+                    try { await bot.telegram.sendMessage(uId, msg); s++; } catch { f++; }
+                }
+                return ctx.reply(`📢 广播完成\n成功: ${s}\n失败: ${f}`);
+            }
+
+            // 解封 /unban id
+            if (text.startsWith('/unban ')) {
+                const tid = text.split(' ')[1];
+                delete db.banned[tid]; await saveDb(db);
+                return ctx.reply(`✅ 已解封: <code>${tid}</code>`, { parse_mode: 'HTML' });
+            }
+
+            // 锁定回复模式处理 (优先级最高)
+            const activeTarget = await kv.get('admin_active_target');
+            if (activeTarget && !text.startsWith('/')) {
+                await bot.telegram.copyMessage(activeTarget, ctx.chat.id, ctx.message.message_id);
+                return ctx.reply(`📤 已发送至 <code>${activeTarget}</code>`, 
+                    Markup.inlineKeyboard([[Markup.button.callback('⏹️ 停止对话状态', 'admin_clear')]])
+                );
+            }
+
+            // 引用回复
+            if (ctx.message.reply_to_message) {
+                const rText = ctx.message.reply_to_message.text || ctx.message.reply_to_message.caption || "";
+                const tid = rText.match(/ID: (\d+)/)?.[1];
+                if (tid) {
+                    await bot.telegram.copyMessage(tid, ctx.chat.id, ctx.message.message_id);
+                    return ctx.reply(`✔️ 已引用回复给 ${tid}`);
+                }
             }
         }
-
-        // 状态锁定回复 (点击回复按钮后触发)
-        const target = await kv.get('admin_active_target');
-        if (target) {
-            await bot.telegram.copyMessage(target, ctx.chat.id, ctx.message.message_id);
-            return ctx.reply(`📤 已发送至用户 <code>${target}</code>`, {
-                parse_mode: 'HTML',
-                ...Markup.inlineKeyboard([[Markup.button.callback('🛑 结束本次对话状态', 'admin_exit')]])
-            });
-        }
         return next();
     });
 
-    // 3. 用户端逻辑 (AI 验证 + 转发 + 申诉)
-    bot.on('message', async (ctx) => {
+    // 2. 用户逻辑与按钮回调
+    bot.on('callback_query', async (ctx) => {
+        const data = ctx.callbackQuery.data;
+        const db = await getDb();
+
+        if (data.startsWith('admin_select:')) {
+            const tid = data.split(':')[1];
+            await kv.put('admin_active_target', tid);
+            return ctx.reply(`✅ 已锁定用户 <code>${tid}</code>，现在发送的任何内容都将直接传给他。`, { parse_mode: 'HTML' });
+        }
+        if (data === 'admin_clear') {
+            await kv.delete('admin_active_target');
+            return ctx.reply("📴 已退出锁定回复模式。");
+        }
+        if (data.startsWith('admin_ban:')) {
+            const tid = data.split(':')[1];
+            db.banned[tid] = { reason: '违规', time: Date.now() };
+            await saveDb(db);
+            return ctx.answerCbQuery("已封禁");
+        }
+    });
+
+    // 用户全格式转发
+    bot.on(['message', 'photo', 'video', 'voice', 'document', 'sticker'], async (ctx) => {
         const uid = ctx.from.id.toString();
         const db = await getDb();
+        if (uid == ADMIN_ID) return;
+
+        if (db.banned[uid]) return ctx.reply("🚫 您已被封禁。");
+
         const state = await kv.get(`state:${uid}`) || 'none';
-
-        if (db.banned[uid]) {
-            return ctx.reply(`🚫 您已被封禁！原因: ${db.banned[uid].reason}`, 
-                Markup.inlineKeyboard([[Markup.button.callback('⚖️ 申诉理由', `appeal:${uid}`)]]));
-        }
-
-        // AI 动态验证
         if (state === 'verifying') {
             const ans = await kv.get(`ans:${uid}`);
             if (ctx.message.text === ans) {
-                await kv.put(`state:${uid}`, 'verified');
-                return ctx.reply("✅ 验证通过！", Markup.inlineKeyboard([
-                    [Markup.button.callback('🙋 人工模式', 'set_human'), Markup.button.callback('🤖 AI 模式', 'set_ai')]
-                ]));
+                await kv.put(`state:${uid}`, 'human');
+                return ctx.reply("✅ 验证通过，已进入人工模式。");
             }
-            return ctx.reply("❌ 验证错误，请重新 /start");
+            return ctx.reply("❌ 错误。");
         }
 
-        // 人工转发
-        if (state === 'human') {
-            const header = `📩 <b>新消息</b>\n<b>名字:</b> <code>${ctx.from.first_name}</code>\n<b>ID:</b> <code>${uid}</code>`;
-            const keyboard = Markup.inlineKeyboard([
-                [Markup.button.callback('💬 回复此人', `reply_to:${uid}`), Markup.button.callback('🚫 封禁', `ban:${uid}`)],
-                [Markup.button.url('👤 个人主页', `tg://user?id=${uid}`), Markup.button.callback('🛡️ 白名单', `white:${uid}`)]
-            ]);
-            await bot.telegram.sendMessage(ADMIN_ID, header, { parse_mode: 'HTML', ...keyboard });
-            await bot.telegram.copyMessage(ADMIN_ID, ctx.chat.id, ctx.message.message_id);
-            return ctx.reply("✔️ 消息已送达人工后台。");
-        }
+        // 转发给管理员
+        const header = `📩 <b>来自:</b> <code>${ctx.from.first_name}</code>\n<b>ID:</b> <code>${uid}</code>`;
+        const kb = Markup.inlineKeyboard([
+            [Markup.button.callback('💬 进入回复模式', `admin_select:${uid}`), Markup.button.callback('🚫 封禁', `admin_ban:${uid}`)],
+            [Markup.button.url('👤 个人主页', `tg://user?id=${uid}`)]
+        ]);
+        await bot.telegram.sendMessage(ADMIN_ID, header, { parse_mode: 'HTML', ...kb });
+        await bot.telegram.copyMessage(ADMIN_ID, ctx.chat.id, ctx.message.message_id);
     });
 
-    // --- 回调逻辑 (按钮点击) ---
-    bot.on('callback_query', async (ctx) => {
-        const data = ctx.callbackQuery.data;
-        if (data.startsWith('reply_to:')) {
-            const tid = data.split(':')[1];
-            await kv.put('admin_active_target', tid);
-            return ctx.reply(`✅ 您已锁定用户 <code>${tid}</code>，接下来发送的所有格式消息都将转发给他，输入 /exit 退出。`, { parse_mode: 'HTML' });
-        }
-        if (data === 'admin_exit') {
-            await kv.delete('admin_active_target');
-            return ctx.reply("📴 已断开对话锁定。");
-        }
-        // ... (省略 ban, white, appeal 等回调逻辑，均已按此逻辑封装)
+    bot.start(async (ctx) => {
+        const uid = ctx.from.id.toString();
+        const db = await getDb();
+        if (!db.users.includes(uid)) db.users.push(uid);
+        await saveDb(db);
+        await kv.put(`state:${uid}`, 'verifying');
+        await kv.put(`ans:${uid}`, "7");
+        return ctx.reply("🛡️ AI 验证：2+5=?");
     });
 
     await bot.handleUpdate(body);
