@@ -1,56 +1,75 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Xiaosu Bot Pro Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrix Bot Terminal</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <script src="https://unpkg.com/ant-design-vue@4.0.7/dist/antd.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/ant-design-vue@4.0.7/dist/reset.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #00f2ff; --bg: #050505; }
+        body { font-family: 'Space Grotesk', sans-serif; background: var(--bg); color: #e2e8f0; }
+        .cyber-card { background: rgba(15, 15, 20, 0.8); border: 1px solid rgba(0, 242, 255, 0.1); backdrop-filter: blur(10px); }
+        .neon-text { text-shadow: 0 0 10px rgba(0, 242, 255, 0.5); }
+        .loading-bar { height: 2px; background: linear-gradient(90deg, transparent, var(--primary), transparent); animation: scan 2s infinite; }
+        @keyframes scan { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+    </style>
 </head>
-<body class="bg-gray-50">
-    <div id="app">
-        <a-layout class="min-h-screen">
-            <a-layout-header class="bg-slate-900 flex justify-between items-center px-10 shadow-2xl">
-                <div class="text-white text-xl font-black italic">🚀 XIAOSU BOT SUPREME</div>
-                <a-tag color="cyan" v-if="authed">AUTHED</a-tag>
-            </a-layout-header>
+<body class="antialiased">
+    <div id="app" class="min-h-screen p-4 md:p-8">
+        <div v-if="loading" class="fixed top-0 left-0 w-full z-50"><div class="loading-bar"></div></div>
+        
+        <div v-if="!isAuth" class="max-w-md mx-auto mt-32">
+            <div class="cyber-card rounded-3xl p-8 text-center">
+                <h1 class="text-3xl font-bold mb-6 neon-text text-cyan-400">AUTH REQUIRED</h1>
+                <input type="password" v-model="jwt" @keyup.enter="login" placeholder="JWT KEY" class="w-full bg-black border border-slate-800 rounded-xl px-5 py-4 mb-4 text-center focus:border-cyan-500 outline-none">
+                <button @click="login" class="w-full bg-cyan-600 hover:bg-cyan-500 text-black font-bold py-4 rounded-xl transition-all">ACCESS SYSTEM</button>
+            </div>
+        </div>
 
-            <a-layout-content class="p-10 flex justify-center">
-                <div v-if="!authed" class="w-full max-w-md bg-white p-12 rounded-3xl shadow-xl mt-20">
-                    <h2 class="text-2xl font-bold text-center mb-8">JWT MASTER ACCESS</h2>
-                    <a-input-password v-model:value="token" size="large" class="mb-6 rounded-xl" placeholder="Master Secret" />
-                    <a-button type="primary" block size="large" class="h-14 rounded-xl font-bold bg-indigo-600" @click="login">进入控制中心</a-button>
-                </div>
+        <div v-else class="max-w-5xl mx-auto space-y-6">
+            <nav class="flex justify-between items-center cyber-card p-6 rounded-3xl">
+                <h1 class="text-2xl font-bold tracking-widest text-cyan-400">MATRIX OS</h1>
+                <button @click="logout" class="px-4 py-2 border border-red-500/30 text-red-500 rounded-xl hover:bg-red-500/10 transition-all text-xs font-bold">LOGOUT</button>
+            </nav>
 
-                <div v-else class="w-full max-w-7xl">
-                    <a-row :gutter="24" class="mb-8">
-                        <a-col :span="6"><a-card hoverable class="rounded-2xl border-none"><a-statistic title="运行时长" value="1d 10h29s" /></a-card></a-col>
-                        <a-col :span="6"><a-card hoverable class="rounded-2xl border-none"><a-statistic title="今日消息" :value="1024" /></a-card></a-col>
-                        <a-col :span="12"><a-card class="rounded-2xl border-none"><a-badge status="processing" text="AI 审计全协议透传监控中" /></a-card></a-col>
-                    </a-row>
-                    <a-table :columns="[]" :dataSource="[]" title="黑名单审计列表" />
-                </div>
-            </a-layout-content>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="cyber-card p-8 rounded-3xl"><p class="text-slate-500 text-xs uppercase mb-2">Total Nodes</p><h3 class="text-5xl font-bold text-cyan-400">{{ db.users.length }}</h3></div>
+                <div class="cyber-card p-8 rounded-3xl"><p class="text-slate-500 text-xs uppercase mb-2">Banned Units</p><h3 class="text-5xl font-bold text-red-500">{{ Object.keys(db.banned).length }}</h3></div>
+            </div>
 
-            <a-layout-footer class="text-center py-12 bg-white border-t">
-                <div class="mb-4 text-gray-400 font-light">Copyright © 2026 <b>Xiaosu</b>. All rights reserved.</div>
-                <a href="https://t.me/xiaosu06" target="_blank" class="bg-[#0088cc] hover:bg-[#0077b3] text-white px-10 py-3 rounded-full transition-all inline-flex items-center gap-2">
-                    <span>✈️</span> 联系作者 (Xiaosu)
-                </a>
-            </a-layout-footer>
-        </a-layout>
+            <div class="cyber-card rounded-3xl overflow-hidden">
+                <div class="p-4 bg-white/5 border-b border-white/5 font-bold uppercase tracking-widest text-sm">Registry List</div>
+                <table class="w-full text-left text-sm">
+                    <tr v-for="(val, id) in db.banned" class="border-b border-white/5 hover:bg-white/5">
+                        <td class="p-4 font-mono text-cyan-200">{{ id }}</td>
+                        <td class="p-4 text-right"><span class="text-red-500 font-bold text-xs uppercase">Banned</span></td>
+                    </tr>
+                </table>
+            </div>
+        </div>
     </div>
     <script>
-        const { createApp, ref } = Vue;
+        const { createApp, ref, onMounted } = Vue;
         createApp({
             setup() {
-                const token = ref(localStorage.getItem('token') || '');
-                const authed = ref(!!token.value);
-                const login = () => { if(token.value){ localStorage.setItem('token', token.value); authed.value=true; } };
-                return { token, authed, login };
+                const isAuth = ref(false), jwt = ref(''), loading = ref(false), db = ref({ users: [], banned: {} });
+                const login = () => { localStorage.setItem('matrix_jwt', jwt.value); fetchData(); };
+                const logout = () => { localStorage.removeItem('matrix_jwt'); location.reload(); };
+                const fetchData = async () => {
+                    const key = localStorage.getItem('matrix_jwt'); if (!key) return;
+                    loading.value = true;
+                    try {
+                        const res = await fetch('/api/admin', { headers: { 'Authorization': `Bearer ${key}` } });
+                        if (res.ok) { db.value = await res.json(); isAuth.value = true; } else alert('DENIED');
+                    } catch (e) { alert('ERROR'); } finally { loading.value = false; }
+                };
+                onMounted(() => { if (localStorage.getItem('matrix_jwt')) fetchData(); });
+                return { isAuth, jwt, loading, db, login, logout };
             }
-        }).use(antd).mount('#app');
+        }).mount('#app');
     </script>
 </body>
 </html>
